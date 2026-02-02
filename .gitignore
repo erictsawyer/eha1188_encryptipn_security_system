@@ -1,28 +1,143 @@
-# Angular specific
-/dist/
-/out-tsc/
-/tmp/
-/coverage/
-/e2e/test-output/
-/.angular/
-.angular/
+Byte-compiled / optimized / DLL files
+__pycache__/
+<>.py[cod]
+$py.class
 
-# Node modules and dependency files
-/node_modules/
-/package-lock.json
-/yarn.lock
+C extensions
+<>.so
 
-# Environment files
-/.env
+Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+.egg-info/
+.installed.cfg
+.egg
+MANIFEST
 
-# Angular CLI and build artefacts
-/.angular-cli.json
-/.ng/
+PyInstaller
+.manifest
+.spec
 
-# TypeScript cache
-*.tsbuildinfo
+Unit test / coverage
+.coverage
+.coverage.<>
+.cache
+.pytest_cache/
+htmlcov/
+coverage.xml
+.cover
+.py,cover
 
-# Logs
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+Encryption logs
+eha_encryption.log
+.log
+
+Temporary files
+eha_temp/
+eha_vault/
+.tmp
+.bak
+~
+
+IDE
+.vscode/
+.idea/
+.swp
+.swo
+~
+.DS_Store
+
+Environment variables
+.env
+.env.local
+.env.android.local
+
+OS
+.DS_Store
+Thumbs.db
+.DS_Store?
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+
+Sphinx documentation
+docs/_build/
+site/
+
+Virtual environments
+venv/
+ENV/
+env/
+.venv
+
+Editor backups
+.orig
+
+Test/Build artifacts
+.tox/
+.pytest_cache/
+.pytest_cache
+
+Node modules (if using npm)
+node_modules/
+package-lock.json
+
+Encrypted files (keep private)
+.encrypted
+.enc
+
+Configuration files with credentials
+.env
+config.local.py
+
+Temporary test files
+test_temp/
+test_output/
+
+Build artifacts
+.pyc
+.pyo
+
+Notebook
+.ipynb_checkpoints
+
+Python4
+profile_default/
+python_config.py
+
+Private keys and credentials
+private_key
+private_key.pem
+secrets/
+
+Misc
+.AppleDouble
+.LSOverride
+.TemporaryItems
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+Archives
+.zip
+.tar.gz
+.rar
+
+macOS
+.AppleDouble
+.LSOverride
+
+Linux
+.Trash
