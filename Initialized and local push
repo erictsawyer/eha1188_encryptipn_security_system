@@ -1,0 +1,14 @@
+# 1. Initialize git
+git init -b main
+
+# 2. Add all 36 files (including hidden .github folder)
+git add .
+
+# 3. Create the initial commit
+git commit -m "chore: initial production release of eha-encryption"
+
+# 4. Link to your GitHub repo (Replace with your actual URL)
+git remote add origin https://github.com/erictsawyer/eha-encryption.git
+
+# 5. Push to GitHub
+git push -u origin main
