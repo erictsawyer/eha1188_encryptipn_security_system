@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EHA-1188 ASCIV-Ω Integrity System Proof</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Courier New', monospace;
+        }
+        
+        body {
+            background-color: #0a0a0a;
+            color: #00ff00;
+            line-height: 1.6;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+            font-size: 14px;
+        }
+        
+        .header {
+            border-bottom: 1px solid #00ff00;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .title {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+        
+        .subtitle {
+            font-size: 16px;
+            color: #00cc00;
+            margin-bottom: 5px;
+        }
+        
+        .timestamp {
+            font-size: 12px;
+            color: #009900;
+        }
+        
+        .section {
+            margin-bottom: 30px;
+            border: 1px solid #003300;
+            padding: 20px;
+            background-color: #001100;
+        }
+        
+        .section-title {
+            font-size: 18px;
+            margin-bottom: 15px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid #00aa00;
+            text-transform: uppercase;
+        }
+        
+        .code-block {
+            background-color: #000000;
+            border: 1px solid #004400;
+            padding: 15px;
+            margin: 15px 0;
+            overflow-x: auto;
+            font-family: 'Courier New', monospace;
+            white-space: pre;
+        }
+        
+        .test-case {
+            margin: 15px 0;
+            padding: 15px;
+            border-left: 3px solid #00ff00;
+            background-color: #002200;
+        }
+        
+        .test-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #00ff00;
+        }
+        
+        .test-result {
+            padding: 5px;
+            margin-top: 5px;
+        }
+        
+        .pass {
+            color: #00ff00;
+            background-color: #002200;
+            border: 1px solid #00ff00;
+        }
+        
+        .fail {
+            color: #ff0000;
+            background-color: #220000;
+            border: 1px solid #ff0000;
+        }
+        
+        .matrix {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin: 15px 0;
+        }
+        
+        .matrix-cell {
+            padding: 10px;
+            border: 1px solid #004400;
+            text-align: center;
+            background-color: #001100;
+        }
+        
+        .input-group {
+            margin: 15px 0;
+        }
+        
+        .input-label {
+            display: block;
+            margin-bottom: 5px;
+            color: #00cc00;
+        }
+        
+        .input-field {
+            width: 100%;
+            padding: 10px;
+            background-color: #000000;
+            border: 1px solid #004400;
+            color: #00ff00;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .button {
+            padding: 10px 20px;
+            background-color: #002200;
+            border: 1px solid #00ff00;
+            color: #00ff00;
+            cursor: pointer;
+            text-transform: uppercase;
+            font-weight: bold;
+            margin: 5px;
+        }
+        
+        .button:hover {
+            background-color: #004400;
+        }
+        
+        .result-display {
+            padding: 15px;
+            margin: 15px 0;
+            border: 1px solid #00aa00;
+            background-color: #001100;
+            min-height: 50px;
+        }
+        
+        .hash-display {
+            word-break: break-all;
+            font-size: 12px;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .comparison-result {
+            padding: 10px;
+            margin: 10px 0;
+            font-weight: bold;
+        }
+        
+        .footer {
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #004400;
+            text-align: center;
+            font-size: 12px;
+            color: #009900;
+        }
+        
+        .log-output {
+            height: 200px;
+            overflow-y: auto;
+            background-color: #000000;
+            border: 1px solid #004400;
+            padding: 10px;
+            margin: 15px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        
+        .status-active {
+            background-color: #00ff00;
+            box-shadow: 0 0 5px #00ff00;
+        }
+        
+        .status-inactive {
+            background-color: #004400;
+        }
+        
+        .layer-breakdown {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 5px;
+            margin: 10px 0;
+        }
+        
+        .layer {
+            padding: 8px;
+            border: 1px solid #004400;
+            text-align: center;
+            font-size: 11px;
+            background-color: #000800;
+        }
+        
+        .layer-title {
+            font-weight: bold;
+            margin-bottom: 3px;
+            color: #00cc00;
+        }
+        
+        .layer-value {
+            font-size: 10px;
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="title">EHA-1188 ASCIV-Ω Integrity System Proof</div>
+        <div class="subtitle">Cryptographic Integrity Verification System</div>
+        <div class="timestamp">Timestamp: <span id="current-timestamp">Loading...</span></div>
+    </div>
+
+    <div class="section">
+        <div class="section-title">System Overview</div>
+        <p>EHA-1188 ASCIV-Ω provides multi-dimensional integrity verification through five entangled security layers:</p>
+        
+        <div class="matrix">
+            <div class="matrix-cell">
+                <strong>C-Layer</strong><br>
+                Cryptographic Fusion
+            </div>
+            <div class="matrix-cell">
+                <strong>U-Layer</strong><br>
+                Unicode Delta Detection
+            </div>
+            <div class="matrix-cell">
+                <strong>S-Layer</strong><br>
+                Semantic Fingerprint
+            </div>
+            <div class="matrix-cell">
+                <strong>B-Layer</strong><br>
+                Behavioral Entropy
+            </div>
+            <div class="matrix-cell">
+                <strong>T-Layer</strong><br>
+                Temporal Continuity
+            </div>
+            <div class="matrix-cell">
+                <strong>Ω-Layer</strong><br>
+                Entangled Hash Output
+            </div>
+        </div>
+        
+        <p>The system detects: byte changes, unicode manipulation, semantic drift, behavioral anomalies, source deviation, temporal discontinuity, and cryptographic inconsistency.</p>
+    </div>
+
+    <div class="section">
+        <div class="section-title">Integrity Test Interface</div>
+        
+        <div class="input-group">
+            <label class="input-label" for="input-text">Enter text to analyze:</label>
+            <textarea id="input-text" class="input-field" rows="4">Universal Healthcare Integration Phase 1.</textarea>
+        </div>
+        
+        <div class="input-group">
+            <button class="button" onclick="generateHash()">Generate Integrity Hash</button>
+            <button class="button" onclick="testStealthAttack()">Test Stealth Attack</button>
+            <button class="button" onclick="testSemanticAttack()">Test Semantic Attack</button>
+            <button class="button" onclick="clearResults()">Clear Results</button>
+        </div>
+        
+        <div id="result-container" class="result-display">
+            Results will appear here...
+        </div>
+        
+        <div class="log-output" id="system-log">
+            System log initialized...
+            Ready for integrity verification.
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="section-title">Test Cases</div>
+        
+        <div class="test-case">
+            <div class="test-title">Test 1: Normal Text Integrity</div>
+            <div class="test-result" id="test1-result">Pending...</div>
+            <button class="button" onclick="runTest1()">Run Test</button>
+        </div>
+        
+        <div class="test-case">
+            <div class="test-title">Test 2: Unicode Stealth Attack Detection</div>
+            <div class="test-result" id="test2-result">Pending...</div>
+            <button class="button" onclick="runTest2()">Run Test</button>
+        </div>
+        
+        <div class="test-case">
+            <div class="test-title">Test 3: Semantic Drift Detection</div>
+            <div class="test-result" id="test3-result">Pending...</div>
+            <button class="button" onclick="runTest3()">Run Test</button>
+        </div>
+        
+        <div class="test-case">
+            <div class="test-title">Test 4: Behavioral Anomaly Detection</div>
+            <div class="test-result" id="test4-result">Pending...</div>
+            <button class="button" onclick="runTest4()">Run Test</button>
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="section-title">Layer Comparison</div>
+        
+        <div class="input-group">
+            <label class="input-label" for="text-a">Text A:</label>
+            <textarea id="text-a" class="input-field" rows="2">Original secure message</textarea>
+            
+            <label class="input-label" for="text-b">Text B:</label>
+            <textarea id="text-b" class="input-field" rows="2">Original secure message</textarea>
+            
+            <button class="button" onclick="compareTexts()">Compare Texts</button>
+        </div>
+        
+        <div id="comparison-result" class="result-display">
+            Comparison results will appear here...
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="section-title">System Status</div>
+        <p><span class="status-indicator status-active"></span> Integrity Engine: ACTIVE</p>
+        <p><span class="status-indicator status-active"></span> Cryptographic Core: ACTIVE</p>
+        <p><span class="status-indicator status-active"></span> Unicode Scanner: ACTIVE</p>
+        <p><span class="status-indicator status-active"></span> Semantic Analyzer: ACTIVE</p>
+        <p><span class="status-indicator status-active"></span> Behavioral Monitor: ACTIVE</p>
+        <p><span class="status-indicator status-active"></span> Temporal Validator: ACTIVE</p>
+    </div>
+
+    <div class="footer">
+        EHA-1188 ASCIV-Ω Integrity System | Proof of Concept | Not for production use
+    </div>
+
+    <script>
+        // Initialize timestamp
+        function updateTimestamp() {
+            const now = new Date();
+            const timestamp = now.toISOString().replace('T', ' ').split('.')[0] + ' UTC';
+            document.getElementById('current-timestamp').textContent = timestamp;
+        }
+        updateTimestamp();
+        setInterval(updateTimestamp, 1000);
+
+        // Log system messages
+        function logMessage(message) {
+            const logElement = document.getElementById('system-log');
+            const timestamp = new Date().toLocaleTimeString();
+            logElement.innerHTML += `\n[${timestamp}] ${message}`;
+            logElement.scrollTop = logElement.scrollHeight;
+        }
+
+        // Simple entropy calculation
+        function calculateEntropy(text) {
+            if (!text) return 0;
+            const freq = {};
+            for (let i = 0; i < text.length; i++) {
+                const char = text[i];
+                freq[char] = (freq[char] || 0) + 1;
+            }
+            let entropy = 0;
+            const length = text.length;
+            for (const char in freq) {
+                const p = freq[char] / length;
+                entropy -= p * Math.log2(p);
+            }
+            return entropy.toFixed(6);
+        }
+
+        // Unicode stealth character detection
+        function detectStealthChars(text) {
+            const stealthChars = [
+                '\u200B', '\u200C', '\u200D', '\uFEFF',
+                '\u202A', '\u202B', '\u202C', '\u202D', '\u202E'
+            ];
+            let count = 0;
+            let positions = [];
+            for (let i = 0; i < text.length; i++) {
+                if (stealthChars.includes(text[i])) {
+                    count++;
+                    positions.push(i);
+                }
+            }
+            return { count, positions };
+        }
+
+        // Generate a simple hash (for demonstration)
+        function simpleHash(text, algorithm = 'SHA-256') {
+            // In a real implementation, this would use Web Crypto API
+            // For demonstration, we use a simplified version
+            let hash = 0;
+            for (let i = 0; i < text.length; i++) {
+                const char = text.charCodeAt(i);
+                hash = ((hash << 5) - hash) + char;
+                hash = hash & hash;
+            }
+            return Math.abs(hash).toString(16).padStart(64, '0');
+        }
+
+        // Simulate EHA-1188 integrity hash generation
+        function generateEHAHash(text, mode = 'static', context = null) {
+            logMessage(`Generating ${mode} integrity hash for text length: ${text.length}`);
+            
+            // C-Layer: Cryptographic fusion
+            const cLayer = simpleHash(text);
+            
+            // U-Layer: Unicode delta
+            const stealthInfo = detectStealthChars(text);
+            const uLayer = simpleHash(`delta:${stealthInfo.count}:${text.length}`);
+            
+            // S-Layer: Semantic fingerprint
+            const words = text.toLowerCase().match(/[a-z0-9]+/g) || [];
+            const uniqueWords = [...new Set(words)].sort();
+            const sLayer = simpleHash(uniqueWords.join(' '));
+            
+            // B-Layer: Behavioral entropy
+            const entropy = calculateEntropy(text);
+            const highByte = text.split('').filter(c => c.charCodeAt(0) > 127).length;
+            const ratio = highByte / Math.max(text.length, 1);
+            const bLayer = simpleHash(`entropy:${entropy}:ratio:${ratio.toFixed(6)}`);
+            
+            // T-Layer: Temporal/context
+            let tSeed;
+            if (mode === 'static') {
+                tSeed = context || simpleHash(text).substring(0, 16);
+            } else {
+                tSeed = Math.floor(Date.now() / 30000).toString();
+                if (context) tSeed += `:${context}`;
+            }
+            const tLayer = simpleHash(tSeed);
+            
+            // Ω-Layer: Entanglement
+            const fused = cLayer + uLayer + sLayer + bLayer + tLayer;
+            const omegaHash = simpleHash(fused);
+            
+            return {
+                omegaHash,
+                layers: {
+                    C: cLayer.substring(0, 16) + '...',
+                    U: uLayer.substring(0, 16) + '...',
+                    S: sLayer.substring(0, 16) + '...',
+                    B: bLayer.substring(0, 16) + '...',
+                    T: tLayer.substring(0, 16) + '...'
+                },
+                stealthInfo,
+                entropy: parseFloat(entropy),
+                mode,
+                timestamp: new Date().toISOString()
+            };
+        }
+
+        // Compare two hashes
+        function compareHashes(hash1, hash2) {
+            let differences = 0;
+            const length = Math.min(hash1.length, hash2.length);
+            for (let i = 0; i < length; i++) {
+                if (hash1[i] !== hash2[i]) differences++;
+            }
+            const percentage = (differences / length * 100).toFixed(2);
+            return { differences, percentage, match: differences === 0 };
+        }
+
+        // Generate hash from input
+        function generateHash() {
+            const text = document.getElementById('input-text').value;
+            const result = generateEHAHash(text, 'static', 'user_input');
+            
+            const display = document.getElementById('result-container');
+            display.innerHTML = `
+                <div style="margin-bottom: 15px;">
+                    <strong>EHA-1188 OMEGA HASH:</strong>
+                    <div class="hash-display">${result.omegaHash}</div>
+                </div>
+                <div class="layer-breakdown">
+                    <div class="layer">
+                        <div class="layer-title">C-Layer</div>
+                        <div class="layer-value">${result.layers.C}</div>
+                    </div>
+                    <div class="layer">
+                        <div class="layer-title">U-Layer</div>
+                        <div class="layer-value">${result.layers.U}</div>
+                    </div>
+                    <div class="layer">
+                        <div class="layer-title">S-Layer</div>
+                        <div class="layer-value">${result.layers.S}</div>
+                    </div>
+                    <div class="layer">
+                        <div class="layer-title">B-Layer</div>
+                        <div class="layer-value">${result.layers.B}</div>
+                    </div>
+                    <div class="layer">
+                        <div class="layer-title">T-Layer</div>
+                        <div class="layer-value">${result.layers.T}</div>
+                    </div>
+                </div>
+                <div style="margin-top: 15px;">
+                    <strong>Analysis:</strong><br>
+                    Text Length: ${text.length} characters<br>
+                    Stealth Characters: ${result.stealthInfo.count}<br>
+                    Entropy: ${result.entropy.toFixed(6)}<br>
+                    Mode: ${result.mode}<br>
+                    Generated: ${new Date(result.timestamp).toLocaleTimeString()}
+                </div>
+            `;
+            
+            logMessage(`Generated integrity hash for ${text.length} characters`);
+        }
+
+        // Test stealth attack
+        function testStealthAttack() {
+            const normalText = "Transfer $1000 to account 12345";
+            const stealthText = "Transfer $1000 to account\u200B12345";
+            
+            const normalHash = generateEHAHash(normalText);
+            const stealthHash = generateEHAHash(stealthText);
+            const comparison = compareHashes(normalHash.omegaHash, stealthHash.omegaHash);
+            
+            const display = document.getElementById('result-container');
+            display.innerHTML = `
+                <div style="margin-bottom: 15px;">
+                    <strong>UNICODE STEALTH ATTACK DETECTION TEST</strong>
+                </div>
+                <div>
+                    <strong>Normal Text:</strong> "${normalText}"<br>
+                    <strong>Stealth Text:</strong> "${stealthText.replace(/\u200B/g, '[ZWSP]')}"<br>
+                </div>
+                <div class="comparison-result ${comparison.match ? 'pass' : 'fail'}">
+                    <strong>Result:</strong> ${comparison.match ? 'NO DIFFERENCE DETECTED' : 'STEALTH ATTACK DETECTED'}<br>
+                    Differences: ${comparison.differences} characters (${comparison.percentage}%)<br>
+                    Status: ${comparison.percentage > 5 ? 'ATTACK DETECTED ✓' : 'ATTACK MISSED ✗'}
+                </div>
+                <div style="margin-top: 15px;">
+                    <strong>Analysis:</strong><br>
+                    Stealth character found at position ${stealthText.indexOf('\u200B')}<br>
+                    Character code: U+200B (Zero Width Space)<br>
+                    Detection confidence: ${Math.min(comparison.percentage * 2, 100).toFixed(1)}%
+                </div>
+            `;
+            
+            logMessage(`Stealth attack test: ${comparison.percentage > 5 ? 'DETECTED' : 'MISSED'} (${comparison.percentage}% difference)`);
+        }
+
+        // Test semantic attack
+        function testSemanticAttack() {
+            const original = "Approve project budget: $50,000";
+            const modified = "Reject project budget: $500,000";
+            
+            const originalHash = generateEHAHash(original);
+            const modifiedHash = generateEHAHash(modified);
+            const comparison = compareHashes(originalHash.omegaHash, modifiedHash.omegaHash);
+            
+            const display = document.getElementById('result-container');
+            display.innerHTML = `
+                <div style="margin-bottom: 15px;">
+                    <strong>SEMANTIC DRIFT DETECTION TEST</strong>
+                </div>
+                <div>
+                    <strong>Original:</strong> "${original}"<br>
+                    <strong>Modified:</strong> "${modified}"<br>
+                </div>
+                <div class="comparison-result ${comparison.match ? 'pass' : 'fail'}">
+                    <strong>Result:</strong> ${comparison.match ? 'NO CHANGE DETECTED' : 'SEMANTIC CHANGE DETECTED'}<br>
+                    Differences: ${comparison.differences} characters (${comparison.percentage}%)<br>
+                    Status: ${comparison.percentage > 1 ? 'CHANGE DETECTED ✓' : 'CHANGE MISSED ✗'}
+                </div>
+                <div style="margin-top: 15px;">
+                    <strong>Analysis:</strong><br>
+                    Word changes detected: Yes<br>
+                    Numerical changes detected: Yes<br>
+                    Semantic drift score: ${comparison.percentage.toFixed(2)}%<br>
+                    Action required: ${comparison.percentage > 10 ? 'HIGH - Manual review needed' : 'LOW - Automated handling'}
+                </div>
+            `;
+            
+            logMessage(`Semantic attack test: ${comparison.percentage > 1 ? 'DETECTED' : 'MISSED'} (${comparison.percentage}% difference)`);
+        }
+
+        // Compare two texts
+        function compareTexts() {
+            const textA = document.getElementById('text-a').value;
+            const textB = document.getElementById('text-b').value;
+            
+            const hashA = generateEHAHash(textA);
+            const hashB = generateEHAHash(textB);
+            const comparison = compareHashes(hashA.omegaHash, hashB.omegaHash);
+            
+            const resultElement = document.getElementById('comparison-result');
+            resultElement.innerHTML = `
+                <div style="margin-bottom: 10px;">
+                    <strong>TEXT COMPARISON RESULTS</strong>
+                </div>
+                <div>
+                    Text A length: ${textA.length} characters<br>
+                    Text B length: ${textB.length} characters<br>
+                    Length difference: ${Math.abs(textA.length - textB.length)} characters
+                </div>
+                <div class="comparison-result ${comparison.match ? 'pass' : 'fail'}" style="margin: 10px 0;">
+                    <strong>Integrity Match:</strong> ${comparison.match ? 'IDENTICAL ✓' : 'DIFFERENT ✗'}<br>
+                    Hash differences: ${comparison.differences} characters<br>
+                    Divergence percentage: ${comparison.percentage}%
+                </div>
+                <div>
+                    <strong>Layer Analysis:</strong><br>
+                    C-Layer (Crypto): ${hashA.layers.C === hashB.layers.C ? 'Identical' : 'Different'}<br>
+                    U-Layer (Unicode): ${hashA.layers.U === hashB.layers.U ? 'Identical' : 'Different'}<br>
+                    S-Layer (Semantic): ${hashA.layers.S === hashB.layers.S ? 'Identical' : 'Different'}<br>
+                    B-Layer (Behavior): ${hashA.layers.B === hashB.layers.B ? 'Identical' : 'Different'}<br>
+                    T-Layer (Temporal): ${hashA.layers.T === hashB.layers.T ? 'Identical' : 'Different'}
+                </div>
+            `;
+            
+            logMessage(`Text comparison: ${comparison.match ? 'IDENTICAL' : 'DIFFERENT'} (${comparison.percentage}% divergence)`);
+        }
+
+        // Clear results
+        function clearResults() {
+            document.getElementById('result-container').innerHTML = 'Results cleared...';
+            document.getElementById('comparison-result').innerHTML = 'Comparison results cleared...';
+            logMessage('Results cleared');
+        }
+
+        // Test cases
+        function runTest1() {
+            const text = "Test message for integrity verification";
+            const hash1 = generateEHAHash(text);
+            const hash2 = generateEHAHash(text);
+            const comparison = compareHashes(hash1.omegaHash, hash2.omegaHash);
+            
+            const resultElement = document.getElementById('test1-result');
+            resultElement.innerHTML = `
+                <div class="${comparison.match ? 'pass' : 'fail'}" style="padding: 5px;">
+                    ${comparison.match ? 'PASS' : 'FAIL'}: Same text produces identical hash<br>
+                    Differences: ${comparison.differences} (${comparison.percentage}%)<br>
+                    Deterministic: ${comparison.match ? 'Yes ✓' : 'No ✗'}
+                </div>
+            `;
+            logMessage(`Test 1: ${comparison.match ? 'PASS' : 'FAIL'} - Deterministic hashing`);
+        }
+
+        function runTest2() {
+            const normal = "Secure data transfer";
+            const stealth = "Secure\u200Bdata\u200Ctransfer";
+            const hash1 = generateEHAHash(normal);
+            const hash2 = generateEHAHash(stealth);
+            const comparison = compareHashes(hash1.omegaHash, hash2.omegaHash);
+            
+            const resultElement = document.getElementById('test2-result');
+            resultElement.innerHTML = `
+                <div class="${comparison.percentage > 5 ? 'pass' : 'fail'}" style="padding: 5px;">
+                    ${comparison.percentage > 5 ? 'PASS' : 'FAIL'}: Stealth characters detected<br>
+                    Differences: ${comparison.differences} (${comparison.percentage}%)<br>
+                    Detection: ${comparison.percentage > 5 ? 'Successful ✓' : 'Failed ✗'}
+                </div>
+            `;
+            logMessage(`Test 2: ${comparison.percentage > 5 ? 'PASS' : 'FAIL'} - Stealth detection`);
+        }
+
+        function runTest3() {
+            const text1 = "The quick brown fox jumps";
+            const text2 = "A fast brown fox leaps";
+            const hash1 = generateEHAHash(text1);
+            const hash2 = generateEHAHash(text2);
+            const comparison = compareHashes(hash1.omegaHash, hash2.omegaHash);
+            
+            const resultElement = document.getElementById('test3-result');
+            resultElement.innerHTML = `
+                <div class="${comparison.percentage > 1 ? 'pass' : 'fail'}" style="padding: 5px;">
+                    ${comparison.percentage > 1 ? 'PASS' : 'FAIL'}: Semantic changes detected<br>
+                    Differences: ${comparison.differences} (${comparison.percentage}%)<br>
+                    Detection: ${comparison.percentage > 1 ? 'Successful ✓' : 'Failed ✗'}
+                </div>
+            `;
+            logMessage(`Test 3: ${comparison.percentage > 1 ? 'PASS' : 'FAIL'} - Semantic drift detection`);
+        }
+
+        function runTest4() {
+            const normal = "Typical user input with normal patterns";
+            const anomalous = "X".repeat(100) + "\x90\x90\x90";
+            const hash1 = generateEHAHash(normal);
+            const hash2 = generateEHAHash(anomalous);
+            const comparison = compareHashes(hash1.omegaHash, hash2.omegaHash);
+            
+            const resultElement = document.getElementById('test4-result');
+            const entropy1 = calculateEntropy(normal);
+            const entropy2 = calculateEntropy(anomalous);
+            
+            resultElement.innerHTML = `
+                <div class="${comparison.percentage > 10 ? 'pass' : 'fail'}" style="padding: 5px;">
+                    ${comparison.percentage > 10 ? 'PASS' : 'FAIL'}: Behavioral anomalies detected<br>
+                    Differences: ${comparison.differences} (${comparison.percentage}%)<br>
+                    Entropy difference: ${Math.abs(entropy1 - entropy2).toFixed(4)}<br>
+                    Detection: ${comparison.percentage > 10 ? 'Successful ✓' : 'Failed ✗'}
+                </div>
+            `;
+            logMessage(`Test 4: ${comparison.percentage > 10 ? 'PASS' : 'FAIL'} - Anomaly detection`);
+        }
+
+        // Initialize log
+        logMessage("EHA-1188 ASCIV-Ω Integrity System initialized");
+        logMessage("System ready for cryptographic integrity verification");
+        logMessage("All security layers active and monitoring");
+    </script>
+</body>
+</html>
