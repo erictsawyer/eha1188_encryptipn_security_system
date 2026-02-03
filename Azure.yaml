@@ -1,0 +1,1057 @@
+# Azure DevOps Pipeline for EHA-1188 ASCIV-Ω Integrity System
+# Version: 1.0.0
+# Description: CI/CD pipeline for building, testing, and deploying EHA-1188
+# Security Level: MILITARY-GRADE CRYPTOGRAPHIC INTEGRITY
+
+name: $(Date:yyyyMMdd)$(Rev:.r)
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+      - releases/*
+  paths:
+    exclude:
+      - docs/*
+      - README.md
+      - .gitignore
+
+pr:
+  branches:
+    include:
+      - main
+      - develop
+  paths:
+    include:
+      - src/*
+      - tests/*
+      - requirements/*
+
+variables:
+  # Build Configuration
+  buildConfiguration: 'Release'
+  pythonVersion: '3.9'
+  dotnetVersion: '6.0.x'
+  
+  # Security Configuration
+  secureKeyVault: 'eha1188-security-vault'
+  cryptoMode: 'FIPS-140-2'
+  
+  # Release Configuration
+  majorVersion: '1'
+  minorVersion: '0'
+  patchVersion: '0'
+  buildVersion: $(Build.BuildId)
+  
+  # Artifact Configuration
+  artifactName: 'eha1188-artifacts'
+  stagingDirectory: $(Build.ArtifactStagingDirectory)
+  
+  # Container Registry
+  containerRegistry: 'eha1188containerregistry.azurecr.io'
+  containerRepository: 'eha1188/asciv-omega'
+  containerTag: '$(Build.BuildId)'
+  
+  # Test Configuration
+  testTimeout: 1800
+  securityScanTimeout: 3600
+  
+  # Environment Specific
+  ${{ if eq(variables['Build.SourceBranchName'], 'main') }}:
+    environment: 'Production'
+    deploymentTarget: 'prod-cluster'
+    securityLevel: 'Maximum'
+    
+  ${{ if eq(variables['Build.SourceBranchName'], 'develop') }}:
+    environment: 'Staging'
+    deploymentTarget: 'staging-cluster'
+    securityLevel: 'High'
+    
+  ${{ if startsWith(variables['Build.SourceBranchName'], 'releases/') }}:
+    environment: 'ReleaseCandidate'
+    deploymentTarget: 'rc-cluster'
+    securityLevel: 'Maximum'
+
+stages:
+- stage: Build
+  displayName: 'Build and Compile'
+  jobs:
+  - job: BuildComponents
+    displayName: 'Build EHA-1188 Components'
+    pool:
+      vmImage: 'ubuntu-latest'
+    strategy:
+      matrix:
+        linux_x64:
+          target: 'x86_64-unknown-linux-gnu'
+          artifactName: 'eha1188-core-linux-x64'
+          outputPath: 'build/linux/x64'
+        linux_arm64:
+          target: 'aarch64-unknown-linux-gnu'
+          artifactName: 'eha1188-core-linux-arm64'
+          outputPath: 'build/linux/arm64'
+        windows_x64:
+          target: 'x86_64-pc-windows-msvc'
+          artifactName: 'eha1188-core-windows-x64'
+          outputPath: 'build/windows/x64'
+        macos_x64:
+          target: 'x86_64-apple-darwin'
+          artifactName: 'eha1188-core-macos-x64'
+          outputPath: 'build/macos/x64'
+        macos_arm64:
+          target: 'aarch64-apple-darwin'
+          artifactName: 'eha1188-core-macos-arm64'
+          outputPath: 'build/macos/arm64'
+    
+    steps:
+    - task: UsePythonVersion@0
+      displayName: 'Use Python $(pythonVersion)'
+      inputs:
+        versionSpec: $(pythonVersion)
+    
+    - task: UseDotNet@2
+      displayName: 'Use .NET $(dotnetVersion)'
+      inputs:
+        version: $(dotnetVersion)
+    
+    - task: DownloadSecureFile@1
+      displayName: 'Download Cryptographic Certificates'
+      name: cryptoCerts
+      inputs:
+        secureFile: 'eha1188-code-signing.pfx'
+    
+    - script: |
+        echo "##[section]Setting Up Build Environment"
+        echo "Build ID: $(Build.BuildId)"
+        echo "Build Number: $(Build.BuildNumber)"
+        echo "Source Branch: $(Build.SourceBranchName)"
+        echo "Target Platform: $(target)"
+        echo "Output Path: $(outputPath)"
+        
+        # Set up cryptographic build environment
+        export CRYPTO_BUILD_KEY=$(cryptoCerts.secureFilePath)
+        export BUILD_TARGET=$(target)
+        export OUTPUT_DIR=$(outputPath)
+        
+        mkdir -p $(outputPath)
+        mkdir -p $(stagingDirectory)/$(outputPath)
+      displayName: 'Initialize Build Environment'
+    
+    - script: |
+        echo "##[section]Installing Build Dependencies"
+        
+        # Install Rust toolchain for core components
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+        source $HOME/.cargo/env
+        
+        # Install cross-compilation tools
+        cargo install cross
+        rustup target add $(target)
+        
+        # Install Python dependencies
+        pip install -r requirements/build.txt
+        pip install -r requirements/dev.txt
+        
+        # Install cryptographic libraries
+        sudo apt-get update
+        sudo apt-get install -y \
+          libssl-dev \
+          pkg-config \
+          libsodium-dev \
+          libsecp256k1-dev \
+          libgmp-dev
+      displayName: 'Install Build Tools'
+    
+    - script: |
+        echo "##[section]Building Core Cryptographic Engine"
+        
+        # Build Rust core with security optimizations
+        RUSTFLAGS="-C target-feature=+aes,+sha,+sse2,+sse3,+ssse3,+sse4.1,+sse4.2" \
+        cargo build \
+          --target $(target) \
+          --release \
+          --features "fips_mode,hardware_acceleration" \
+          --manifest-path src/core/Cargo.toml
+        
+        # Verify binary security characteristics
+        if [ -f "target/$(target)/release/eha1188_core" ]; then
+          file "target/$(target)/release/eha1188_core"
+          strings "target/$(target)/release/eha1188_core" | grep -i "EHA1188" | head -5
+        fi
+      displayName: 'Build Rust Core Components'
+      continueOnError: false
+    
+    - script: |
+        echo "##[section]Building Python Bindings"
+        
+        # Build Python extension module
+        cd src/python
+        python setup.py build_ext --inplace
+        python setup.py bdist_wheel
+        
+        # Verify Python module
+        python -c "from eha_integrity import EHA1188_ASCIV_OMEGA; print('Python module loaded successfully')"
+        
+        # Copy artifacts
+        cp dist/*.whl $(Build.ArtifactStagingDirectory)/python/
+      displayName: 'Build Python Components'
+    
+    - script: |
+        echo "##[section]Code Signing and Verification"
+        
+        # Code signing for Windows
+        if [[ "$(target)" == *"windows"* ]]; then
+          echo "Signing Windows executable..."
+          signtool sign /f $(cryptoCerts.secureFilePath) /p "$(CODE_SIGNING_PASSWORD)" \
+            /t http://timestamp.digicert.com \
+            /fd sha256 \
+            "target/$(target)/release/eha1188.exe"
+        fi
+        
+        # Generate cryptographic hashes for all binaries
+        find target/$(target)/release -type f -executable -o -name "*.so" -o -name "*.dylib" -o -name "*.dll" | while read file; do
+          echo "Generating hash for: $file"
+          sha256sum "$file" > "$file.sha256"
+          sha512sum "$file" > "$file.sha512"
+          blake2b "$file" > "$file.blake2b"
+        done
+        
+        # Generate EHA-1188 integrity signature
+        python -m eha_integrity.sign \
+          --input "target/$(target)/release/" \
+          --output "$(outputPath)/integrity.eha" \
+          --context "build_$(target)_$(Build.BuildId)"
+      displayName: 'Code Signing and Integrity Verification'
+      env:
+        CODE_SIGNING_PASSWORD: $(CODE_SIGNING_PASSWORD)
+    
+    - script: |
+        echo "##[section]Packaging Artifacts"
+        
+        # Create platform-specific packages
+        case "$(target)" in
+          *linux*)
+            tar czf "$(stagingDirectory)/$(artifactName).tar.gz" \
+              -C "target/$(target)/release" \
+              eha1188_core \
+              *.sha256 *.sha512 *.blake2b \
+              integrity.eha
+            ;;
+          *windows*)
+            7z a "$(stagingDirectory)/$(artifactName).zip" \
+              "target/$(target)/release/eha1188.exe" \
+              "target/$(target)/release/*.sha256" \
+              "target/$($(target))/release/*.sha512" \
+              "target/$(target)/release/integrity.eha"
+            ;;
+          *darwin*)
+            tar czf "$(stagingDirectory)/$(artifactName).tar.gz" \
+              -C "target/$(target)/release" \
+              eha1188_core \
+              *.sha256 *.sha512 *.blake2b \
+              integrity.eha
+            ;;
+        esac
+        
+        # Generate package manifest
+        cat > "$(stagingDirectory)/manifest.json" << EOF
+        {
+          "package": "$(artifactName)",
+          "version": "$(majorVersion).$(minorVersion).$(patchVersion)",
+          "build": "$(Build.BuildId)",
+          "target": "$(target)",
+          "timestamp": "$(Build.BuildNumber)",
+          "environment": "$(environment)",
+          "integrity_file": "integrity.eha",
+          "hashes": {
+            "sha256": "$(cat target/$(target)/release/eha1188_core.sha256 | cut -d' ' -f1)",
+            "sha512": "$(cat target/$(target)/release/eha1188_core.sha512 | cut -d' ' -f1)",
+            "blake2b": "$(cat target/$(target)/release/eha1188_core.blake2b | cut -d' ' -f1)"
+          }
+        }
+        EOF
+      displayName: 'Package Build Artifacts'
+    
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Build Artifacts'
+      inputs:
+        PathtoPublish: '$(stagingDirectory)'
+        ArtifactName: '$(artifactName)'
+        publishLocation: 'Container'
+    
+    - task: AzureKeyVault@1
+      displayName: 'Store Build Signatures in Key Vault'
+      inputs:
+        azureSubscription: 'EHA1188-Service-Connection'
+        KeyVaultName: $(secureKeyVault)
+        SecretsFilter: '*'
+      enabled: false  # Enable for production builds
+
+- stage: Test
+  displayName: 'Security and Functional Testing'
+  dependsOn: Build
+  condition: succeeded()
+  jobs:
+  - job: SecurityTesting
+    displayName: 'Security Validation Suite'
+    pool:
+      vmImage: 'ubuntu-latest'
+    timeoutInMinutes: $(securityScanTimeout)
+    
+    steps:
+    - task: UsePythonVersion@0
+      displayName: 'Use Python for Security Tests'
+      inputs:
+        versionSpec: $(pythonVersion)
+    
+    - download: current
+      artifact: eha1188-artifacts
+      patterns: '**/python/*.whl'
+    
+    - script: |
+        echo "##[section]Installing Security Testing Tools"
+        
+        # Install security scanning tools
+        pip install bandit safety pylint mypy semgrep
+        pip install cryptography argon2-cffi
+        
+        # Install built package
+        pip install $(Pipeline.Workspace)/eha1188-artifacts/python/*.whl
+        
+        # Install fuzzing tools
+        cargo install cargo-fuzz
+        rustup component add llvm-tools-preview
+      displayName: 'Setup Security Testing Environment'
+    
+    - script: |
+        echo "##[section]Static Application Security Testing (SAST)"
+        
+        # Run Bandit (Python security scanner)
+        bandit -r src/ -f json -o bandit-report.json || true
+        
+        # Run Semgrep with custom rules
+        semgrep --config=p/security-audit \
+                --config=p/python \
+                --config=r/python.security \
+                -o semgrep-report.json \
+                src/
+        
+        # Run Mypy for type safety
+        mypy src/python/ --no-error-summary --json-report mypy-report
+        
+        # Generate security score
+        python scripts/security_score.py \
+          --bandit bandit-report.json \
+          --semgrep semgrep-report.json \
+          --mypy mypy-report \
+          --output security-score.json
+      displayName: 'Run SAST Scans'
+      continueOnError: true
+    
+    - script: |
+        echo "##[section]Cryptographic Validation Tests"
+        
+        # Test cryptographic implementations
+        python tests/crypto_validation.py \
+          --mode $(cryptoMode) \
+          --output crypto-validation-report.json
+        
+        # Test against known answer tests (KATs)
+        python tests/kat_validation.py \
+          --vectors tests/vectors/nist_kat.json \
+          --output kat-report.json
+        
+        # Test side-channel resistance
+        python tests/side_channel.py \
+          --iterations 10000 \
+          --output side-channel-report.json
+      displayName: 'Cryptographic Implementation Testing'
+    
+    - script: |
+        echo "##[section]Fuzz Testing"
+        
+        # Run cargo fuzz tests
+        cd src/core
+        for target in $(cargo fuzz list); do
+          echo "Fuzzing target: $target"
+          cargo fuzz run $target -- -max_total_time=300
+        done
+        
+        # Run Python fuzz tests
+        python -m pytest tests/fuzz/ \
+          -v \
+          --fuzz-max-time=300 \
+          --json-report \
+          --json-report-file=fuzz-report.json
+      displayName: 'Fuzz Testing'
+      timeoutInMinutes: 600
+    
+    - script: |
+        echo "##[section]Integrity Engine Validation"
+        
+        # Test all five layers
+        python tests/test_integrity_layers.py \
+          --layer all \
+          --detailed \
+          --output integrity-validation-report.json
+        
+        # Test attack detection
+        python tests/test_attack_detection.py \
+          --attack-type all \
+          --iterations 1000 \
+          --output attack-detection-report.json
+        
+        # Test performance under attack
+        python tests/test_performance_under_attack.py \
+          --concurrent 100 \
+          --duration 60 \
+          --output performance-under-attack.json
+      displayName: 'Integrity Engine Validation'
+    
+    - task: PublishTestResults@2
+      displayName: 'Publish Security Test Results'
+      inputs:
+        testResultsFormat: 'JUnit'
+        testResultsFiles: '**/*-report.xml'
+        searchFolder: '$(System.DefaultWorkingDirectory)'
+        mergeTestResults: true
+        testRunTitle: 'EHA-1188 Security Tests'
+      condition: always()
+    
+    - task: PublishCodeCoverageResults@1
+      displayName: 'Publish Code Coverage'
+      inputs:
+        codeCoverageTool: 'Cobertura'
+        summaryFileLocation: '**/coverage.xml'
+        reportDirectory: '**/coverage'
+      condition: always()
+    
+    - script: |
+        echo "##[section]Generate Security Compliance Report"
+        
+        python scripts/generate_compliance_report.py \
+          --reports "*-report.json" \
+          --standards "NIST-800-53,FIPS-140-2,ISO-27001" \
+          --output compliance-report.pdf
+        
+        # Upload to secure storage
+        az storage blob upload \
+          --account-name eha1188securityreports \
+          --container-name security-scans \
+          --name "$(Build.BuildId)-compliance-report.pdf" \
+          --file compliance-report.pdf \
+          --auth-mode key
+      displayName: 'Generate Compliance Documentation'
+      env:
+        AZURE_STORAGE_KEY: $(SECURE_STORAGE_KEY)
+
+  - job: FunctionalTesting
+    displayName: 'Functional Test Suite'
+    pool:
+      vmImage: 'windows-latest'
+    strategy:
+      matrix:
+        windows:
+          osName: 'Windows'
+          testPlatform: 'windows-x64'
+        linux:
+          osName: 'Linux'
+          testPlatform: 'linux-x64'
+        macos:
+          osName: 'macOS'
+          testPlatform: 'macos-x64'
+    
+    steps:
+    - download: current
+      artifact: eha1188-artifacts
+      patterns: '**/$(testPlatform)/*'
+    
+    - script: |
+        echo "##[section]Setting Up Test Environment for $(osName)"
+        
+        # Extract and prepare test artifacts
+        if [ "$(osName)" = "Windows" ]; then
+          7z x "$(Pipeline.Workspace)/eha1188-artifacts/$(testPlatform)/*.zip" -otest_env
+        else
+          tar xzf "$(Pipeline.Workspace)/eha1188-artifacts/$(testPlatform)/*.tar.gz" -C test_env
+        fi
+        
+        cd test_env
+        chmod +x eha1188_core 2>/dev/null || true
+      displayName: 'Prepare Test Environment'
+    
+    - script: |
+        echo "##[section]Running Core Functional Tests"
+        
+        # Test command line interface
+        ./eha1188_core --version
+        ./eha1188_core --help
+        
+        # Test basic operations
+        echo "Test data" | ./eha1188_core hash --mode static --context test
+        ./eha1188_core verify --help
+        
+        # Test file operations
+        echo "Test file content" > test.txt
+        ./eha1188_core hash --input test.txt --output test.eha
+        ./eha1188_core verify --input test.txt --hash-file test.eha
+        
+        # Test error conditions
+        ./eha1188_core hash --input nonexistent.txt 2>&1 | grep -i "error" || true
+      displayName: 'CLI Functional Tests'
+    
+    - script: |
+        echo "##[section]Running Integration Tests"
+        
+        # Test Python integration
+        python -m pytest tests/integration/ \
+          -v \
+          --tb=short \
+          --junitxml=integration-test-results.xml \
+          --cov=eha_integrity \
+          --cov-report=xml:coverage.xml \
+          --cov-report=html:coverage_html
+        
+        # Test API consistency
+        python tests/test_api_consistency.py \
+          --platform $(testPlatform) \
+          --output api-consistency-report.json
+      displayName: 'Integration Tests'
+    
+    - script: |
+        echo "##[section]Performance Benchmarking"
+        
+        # Run performance tests
+        python tests/performance_benchmark.py \
+          --size small,medium,large \
+          --concurrency 1,10,100 \
+          --iterations 1000 \
+          --output performance-benchmark-$(testPlatform).json
+        
+        # Compare against baseline
+        python scripts/compare_performance.py \
+          --current performance-benchmark-$(testPlatform).json \
+          --baseline baseline-performance.json \
+          --output performance-delta.json
+      displayName: 'Performance Testing'
+    
+    - script: |
+        echo "##[section]Cross-Platform Compatibility Tests"
+        
+        # Test interoperability between platforms
+        python tests/test_cross_platform.py \
+          --platforms $(testPlatform) \
+          --rounds 100 \
+          --output cross-platform-$(testPlatform).json
+        
+        # Test data format compatibility
+        python tests/test_data_compatibility.py \
+          --formats json,yaml,toml,xml \
+          --output format-compatibility.json
+      displayName: 'Compatibility Testing'
+    
+    - task: PublishTestResults@2
+      displayName: 'Publish Functional Test Results'
+      inputs:
+        testResultsFormat: 'JUnit'
+        testResultsFiles: '**/*-results.xml'
+        searchFolder: '$(System.DefaultWorkingDirectory)'
+        mergeTestResults: false
+        testRunTitle: 'EHA-1188 $(osName) Functional Tests'
+      condition: always()
+
+- stage: Containerize
+  displayName: 'Container Image Build'
+  dependsOn: Test
+  condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+  jobs:
+  - job: BuildContainers
+    displayName: 'Build and Scan Containers'
+    pool:
+      vmImage: 'ubuntu-latest'
+    
+    steps:
+    - task: Docker@2
+      displayName: 'Build Docker Image'
+      inputs:
+        command: 'build'
+        repository: '$(containerRepository)'
+        dockerfile: 'Dockerfile'
+        tags: |
+          $(containerTag)
+          $(majorVersion).$(minorVersion).$(patchVersion)
+          latest
+        buildContext: '.'
+        arguments: '--build-arg BUILD_ID=$(Build.BuildId) --build-arg VERSION=$(majorVersion).$(minorVersion).$(patchVersion)'
+    
+    - task: Docker@2
+      displayName: 'Scan Container for Vulnerabilities'
+      inputs:
+        command: 'scan'
+        repository: '$(containerRepository)'
+        tags: '$(containerTag)'
+    
+    - task: Docker@2
+      displayName: 'Push to Container Registry'
+      inputs:
+        command: 'push'
+        repository: '$(containerRepository)'
+        tags: |
+          $(containerTag)
+          $(majorVersion).$(minorVersion).$(patchVersion)
+        containerRegistry: 'EHA1188 Container Registry'
+    
+    - script: |
+        echo "##[section]Generate Container SBOM"
+        
+        # Generate Software Bill of Materials
+        docker sbom $(containerRegistry)/$(containerRepository):$(containerTag) \
+          --format spdx-json \
+          --output sbom-spdx.json
+        
+        docker sbom $(containerRegistry)/$(containerRepository):$(containerTag) \
+          --format cyclonedx-json \
+          --output sbom-cyclonedx.json
+        
+        # Sign SBOM with EHA-1188 integrity
+        python -m eha_integrity.sign \
+          --input sbom-*.json \
+          --output sbom-integrity.eha \
+          --context "container_$(containerTag)_sbom"
+        
+        # Upload SBOM to registry
+        oras push $(containerRegistry)/$(containerRepository):$(containerTag)-sbom \
+          sbom-spdx.json:application/spdx+json \
+          sbom-cyclonedx.json:application/cyclonedx+json \
+          sbom-integrity.eha:application/vnd.eha1188.integrity+json
+      displayName: 'Generate and Sign SBOM'
+    
+    - task: AzureContainerApps@1
+      displayName: 'Deploy to Container Apps (Staging)'
+      inputs:
+        azureSubscription: 'EHA1188-Service-Connection'
+        acrName: 'eha1188containerregistry'
+        imageToDeploy: '$(containerRepository):$(containerTag)'
+        containerAppName: 'eha1188-staging'
+        resourceGroup: 'eha1188-rg'
+        targetPort: '8080'
+        location: 'eastus'
+      condition: and(succeeded(), eq(variables['environment'], 'Staging'))
+
+- stage: SecurityGate
+  displayName: 'Security Compliance Gate'
+  dependsOn: 
+    - Test
+    - Containerize
+  condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+  jobs:
+  - job: SecurityCompliance
+    displayName: 'Security Compliance Validation'
+    pool: 
+      name: 'Security-Scanner-Pool'
+    
+    steps:
+    - task: AzureKeyVault@1
+      displayName: 'Retrieve Compliance Configuration'
+      inputs:
+        azureSubscription: 'EHA1188-Security-Connection'
+        KeyVaultName: $(secureKeyVault)
+        SecretsFilter: 'compliance-*'
+    
+    - script: |
+        echo "##[section]Validate Security Thresholds"
+        
+        # Load security test results
+        python scripts/validate_security_thresholds.py \
+          --bandit-score 95 \
+          --semgrep-findings 0 \
+          --crypto-validation-pass \
+          --fuzz-coverage 85 \
+          --output security-validation.json
+        
+        # Check if thresholds are met
+        if grep -q '"passed": false' security-validation.json; then
+          echo "##vso[task.logissue type=error]Security thresholds not met"
+          exit 1
+        fi
+      displayName: 'Check Security Thresholds'
+    
+    - task: InvokeRESTAPI@1
+      displayName: 'Submit to Security Registry'
+      inputs:
+        connectionType: 'connectedServiceName'
+        serviceConnection: 'EHA1188-Security-Registry'
+        method: 'POST'
+        headers: '{"Content-Type": "application/json"}'
+        body: |
+          {
+            "buildId": "$(Build.BuildId)",
+            "version": "$(majorVersion).$(minorVersion).$(patchVersion)",
+            "artifactHashes": {
+              "linux_x64": "$(LINUX_X64_HASH)",
+              "windows_x64": "$(WINDOWS_X64_HASH)",
+              "container": "$(CONTAINER_HASH)"
+            },
+            "securityScore": "$(SECURITY_SCORE)",
+            "compliance": ["FIPS-140-2", "NIST-800-53", "ISO-27001"]
+          }
+    
+    - task: AzurePolicyGate@0
+      displayName: 'Azure Policy Compliance Check'
+      inputs:
+        azureSubscription: 'EHA1188-Service-Connection'
+        resourceGroup: 'eha1188-compliance-rg'
+        policyDefinition: '/providers/Microsoft.Authorization/policyDefinitions/xxxxx'
+    
+    - task: ManualValidation@0
+      displayName: 'Manual Security Review Required'
+      inputs:
+        notifyUsers: 'security-team@eha1188.example.com'
+        instructions: 'Please review the security compliance report and approve for production deployment.'
+        onTimeout: 'reject'
+
+- stage: Deploy
+  displayName: 'Deployment'
+  dependsOn: SecurityGate
+  condition: and(succeeded(), eq(variables['environment'], 'Production'))
+  jobs:
+  - deployment: DeployProduction
+    displayName: 'Deploy to Production Environment'
+    environment: 'Production'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: AzureKeyVault@1
+            displayName: 'Retrieve Production Secrets'
+            inputs:
+              azureSubscription: 'EHA1188-Production-Connection'
+              KeyVaultName: 'eha1188-production-vault'
+              SecretsFilter: 'production-*'
+          
+          - task: DownloadBuildArtifacts@1
+            displayName: 'Download Release Artifacts'
+            inputs:
+              buildType: 'current'
+              downloadType: 'single'
+              artifactName: 'eha1188-artifacts'
+              downloadPath: '$(System.ArtifactsDirectory)'
+          
+          - script: |
+              echo "##[section]Verifying Production Artifacts"
+              
+              # Verify all artifact signatures
+              python scripts/verify_production_artifacts.py \
+                --artifacts $(System.ArtifactsDirectory) \
+                --key-vault $(secureKeyVault) \
+                --output verification-report.json
+              
+              if [ $? -ne 0 ]; then
+                echo "##vso[task.logissue type=error]Artifact verification failed"
+                exit 1
+              fi
+            displayName: 'Artifact Verification'
+          
+          - task: AzureResourceManagerTemplateDeployment@3
+            displayName: 'Deploy Infrastructure'
+            inputs:
+              deploymentScope: 'Resource Group'
+              azureResourceManagerConnection: 'EHA1188-Production-Connection'
+              subscriptionId: '$(PRODUCTION_SUBSCRIPTION_ID)'
+              action: 'Create Or Update Resource Group'
+              resourceGroupName: 'eha1188-production-rg'
+              location: 'East US 2'
+              templateLocation: 'Linked artifact'
+              csmFile: 'infrastructure/main.bicep'
+              csmParametersFile: 'infrastructure/prod.parameters.json'
+              deploymentMode: 'Incremental'
+          
+          - task: Kubernetes@1
+            displayName: 'Deploy to AKS Cluster'
+            inputs:
+              connectionType: 'Azure Resource Manager'
+              azureSubscriptionEndpoint: 'EHA1188-Production-Connection'
+              azureResourceGroup: 'eha1188-production-rg'
+              kubernetesCluster: 'eha1188-production-aks'
+              namespace: 'eha1188'
+              command: 'apply'
+              arguments: '-f k8s/production/'
+              secretType: 'dockerRegistry'
+              containerRegistryType: 'Azure Container Registry'
+          
+          - task: AzureContainerApps@1
+            displayName: 'Deploy Container App'
+            inputs:
+              azureSubscription: 'EHA1188-Production-Connection'
+              acrName: 'eha1188containerregistry'
+              imageToDeploy: '$(containerRepository):$(containerTag)'
+              containerAppName: 'eha1188-production'
+              resourceGroup: 'eha1188-production-rg'
+              targetPort: '8080'
+              location: 'eastus2'
+              ingress: 'external'
+              transport: 'http2'
+          
+          - task: AzureFunctionApp@2
+            displayName: 'Deploy Azure Functions'
+            inputs:
+              azureSubscription: 'EHA1188-Production-Connection'
+              appType: 'functionAppLinux'
+              appName: 'eha1188-functions-prod'
+              package: '$(System.ArtifactsDirectory)/functions/*.zip'
+              runtimeStack: 'PYTHON|3.9'
+          
+          - script: |
+              echo "##[section]Running Post-Deployment Validation"
+              
+              # Smoke tests
+              python tests/smoke_tests.py \
+                --endpoint https://eha1188.example.com \
+                --api-key $(PRODUCTION_API_KEY) \
+                --output smoke-test-results.json
+              
+              # Load tests
+              python tests/load_tests.py \
+                --endpoint https://eha1188.example.com \
+                --users 100 \
+                --duration 300 \
+                --output load-test-results.json
+              
+              # Security scan of deployed application
+              zap-baseline.py -t https://eha1188.example.com \
+                -r security-scan-report.html
+            displayName: 'Post-Deployment Testing'
+          
+          - task: AzureMonitor@1
+            displayName: 'Configure Monitoring'
+            inputs:
+              azureSubscription: 'EHA1188-Production-Connection'
+              resourceGroup: 'eha1188-production-rg'
+              operation: 'CreateOrUpdate'
+              resourceType: 'Microsoft.Insights/components'
+              resourceName: 'eha1188-insights'
+              location: 'eastus2'
+              properties: '{"Application_Type":"web","Flow_Type":"Bluefield","Request_Source":"AzureSDK"}'
+          
+          - task: AzureAppServiceManage@0
+            displayName: 'Warm Up Application'
+            inputs:
+              azureSubscription: 'EHA1188-Production-Connection'
+              action: 'Start Application'
+              webAppName: 'eha1188-production'
+          
+          - task: AzureAppServiceManage@0
+            displayName: 'Swap to Production Slot'
+            inputs:
+              azureSubscription: 'EHA1188-Production-Connection'
+              action: 'Swap Slots'
+              webAppName: 'eha1188-production'
+              sourceSlot: 'staging'
+
+- stage: Release
+  displayName: 'Release Management'
+  dependsOn: Deploy
+  condition: succeeded()
+  jobs:
+  - job: CreateRelease
+    displayName: 'Create Official Release'
+    pool:
+      vmImage: 'ubuntu-latest'
+    
+    steps:
+    - task: GitHubRelease@1
+      displayName: 'Create GitHub Release'
+      inputs:
+        gitHubConnection: 'EHA1188-GitHub'
+        repositoryName: 'eha1188/eha1188-core'
+        action: 'create'
+        target: '$(Build.SourceVersion)'
+        tagSource: 'manual'
+        tag: 'v$(majorVersion).$(minorVersion).$(patchVersion)'
+        title: 'EHA-1188 ASCIV-Ω v$(majorVersion).$(minorVersion).$(patchVersion)'
+        releaseNotesSource: 'file'
+        releaseNotesFile: 'RELEASE_NOTES.md'
+        assets: '$(Build.ArtifactStagingDirectory)/*'
+        assetUploadMode: 'replace'
+    
+    - script: |
+        echo "##[section]Publish to Package Registries"
+        
+        # Publish Python package to PyPI
+        twine upload \
+          --repository-url https://upload.pypi.org/legacy/ \
+          --username __token__ \
+          --password $(PYPI_TOKEN) \
+          $(Pipeline.Workspace)/eha1188-artifacts/python/*.whl
+        
+        # Publish Docker image to Docker Hub
+        docker tag $(containerRegistry)/$(containerRepository):$(containerTag) \
+          eha1188/asciv-omega:v$(majorVersion).$(minorVersion).$(patchVersion)
+        docker push eha1188/asciv-omega:v$(majorVersion).$(minorVersion).$(patchVersion)
+        
+        # Publish to Homebrew (macOS)
+        python scripts/update_homebrew_formula.py \
+          --version $(majorVersion).$(minorVersion).$(patchVersion) \
+          --sha256 $(MACOS_X64_HASH) \
+          --url https://github.com/eha1188/eha1188-core/releases/download/v$(majorVersion).$(minorVersion).$(patchVersion)/eha1188-core-macos-x64.tar.gz
+      displayName: 'Publish to Package Managers'
+    
+    - task: AzureDevOpsRelease@1
+      displayName: 'Create Azure DevOps Release'
+      inputs:
+        connectionType: 'connectedServiceName'
+        serviceConnection: 'EHA1188-DevOps'
+        releaseDefinition: 'EHA-1188 Production Release'
+        releaseDescription: 'Automatic release from pipeline $(Build.BuildId)'
+        artifactName: 'eha1188-artifacts'
+        artifactVersion: '$(Build.BuildId)'
+    
+    - task: SendEmail@1
+      displayName: 'Send Release Notification'
+      inputs:
+        to: 'releases@eha1188.example.com,security-team@eha1188.example.com'
+        cc: 'engineering@eha1188.example.com'
+        subject: 'EHA-1188 v$(majorVersion).$(minorVersion).$(patchVersion) Released'
+        body: |
+          EHA-1188 ASCIV-Ω Integrity System v$(majorVersion).$(minorVersion).$(patchVersion) has been successfully released.
+          
+          Build: $(Build.BuildId)
+          Release: v$(majorVersion).$(minorVersion).$(patchVersion)
+          Date: $(Build.BuildNumber)
+          
+          Security Score: $(SECURITY_SCORE)%
+          Compliance: FIPS-140-2, NIST-800-53, ISO-27001
+          
+          Download: https://github.com/eha1188/eha1188-core/releases/tag/v$(majorVersion).$(minorVersion).$(patchVersion)
+          Documentation: https://docs.eha1188.example.com/v$(majorVersion).$(minorVersion).$(patchVersion)/
+          
+          Security Advisories: https://security.eha1188.example.com/
+        importance: 'High'
+
+- stage: Monitor
+  displayName: 'Post-Deployment Monitoring'
+  dependsOn: Release
+  condition: always()
+  jobs:
+  - job: Monitoring
+    displayName: 'Monitor Production Deployment'
+    pool:
+      vmImage: 'ubuntu-latest'
+    
+    steps:
+    - task: AzureCLI@2
+      displayName: 'Configure Application Insights'
+      inputs:
+        azureSubscription: 'EHA1188-Production-Connection'
+        scriptType: 'bash'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          # Configure alert rules
+          az monitor metrics alert create \
+            -n "eha1188-high-error-rate" \
+            -g "eha1188-production-rg" \
+            --scopes $(APP_INSIGHTS_ID) \
+            --condition "avg requests/failed > 5" \
+            --window-size 5m \
+            --evaluation-frequency 1m \
+            --action $(ACTION_GROUP_ID)
+          
+          # Configure log analytics
+          az monitor log-analytics workspace data-export create \
+            -n "eha1188-security-logs" \
+            -g "eha1188-production-rg" \
+            --workspace-name "eha1188-logs" \
+            --destination $(STORAGE_ACCOUNT_ID) \
+            --tables SecurityEvent
+      
+    - script: |
+        echo "##[section]Initialize Synthetic Monitoring"
+        
+        # Create availability tests
+        python scripts/create_availability_tests.py \
+          --endpoints "https://eha1188.example.com/api/health,https://eha1188.example.com/api/version" \
+          --locations "eastus,westeurope,southeastasia" \
+          --frequency 300 \
+          --output availability-tests.json
+        
+        # Upload to Application Insights
+        az rest --method put \
+          --url "https://management.azure.com$(APP_INSIGHTS_ID)/webtests?api-version=2015-05-01" \
+          --body @availability-tests.json
+      displayName: 'Setup Synthetic Monitoring'
+    
+    - task: AzureResourceGroupDeployment@2
+      displayName: 'Deploy Dashboard'
+      inputs:
+        azureSubscription: 'EHA1188-Production-Connection'
+        resourceGroupName: 'eha1188-monitoring-rg'
+        location: 'eastus'
+        csmFile: 'monitoring/dashboard.json'
+        csmParametersFile: 'monitoring/dashboard.parameters.json'
+        deploymentMode: 'Incremental'
+    
+    - pwsh: |
+        Write-Host "##[section]Generating Initial Health Report" -ForegroundColor Green
+        
+        # Generate health report
+        $healthReport = @{
+          timestamp = Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ"
+          buildId = "$(Build.BuildId)"
+          version = "v$(majorVersion).$(minorVersion).$(patchVersion)"
+          environment = "Production"
+          checks = @()
+        }
+        
+        # Check API health
+        try {
+          $response = Invoke-RestMethod -Uri "https://eha1188.example.com/api/health" -TimeoutSec 30
+          $healthReport.checks += @{
+            name = "API Health"
+            status = "Healthy"
+            responseTime = $response.responseTime
+          }
+        } catch {
+          $healthReport.checks += @{
+            name = "API Health"
+            status = "Unhealthy"
+            error = $_.Exception.Message
+          }
+        }
+        
+        # Convert to JSON and upload
+        $healthReport | ConvertTo-Json -Depth 10 | Out-File "health-report.json"
+        
+        az storage blob upload \
+          --account-name eha1188reports \
+          --container-name health-reports \
+          --name "$(Build.BuildId)-health-report.json" \
+          --file health-report.json \
+          --auth-mode key
+      displayName: 'Generate Health Report'
+
+# Pipeline Variables (Set in Azure DevOps Library)
+variables:
+  - group: 'EHA-1188 Build Variables'
+  - group: 'EHA-1188 Security Variables'
+  - group: 'EHA-1188 Production Secrets'
+
+# Service Connections Required
+# 1. Azure Resource Manager: EHA1188-Service-Connection
+# 2. Azure Resource Manager: EHA1188-Security-Connection  
+# 3. Azure Resource Manager: EHA1188-Production-Connection
+# 4. Docker Registry: EHA1188 Container Registry
+# 5. GitHub: EHA1188-GitHub
+# 6. PyPI: EHA1188-PyPI
+# 7. Azure DevOps: EHA1188-DevOps
+
+# Permission Requirements
+# - Build Service: Contributor on resource groups
+# - Security Service: Key Vault Secrets Officer
+# - Release Service: Release Administrator
+# - Monitoring Service: Monitoring Contributor
+
+# Retention Policy
+# - Build artifacts: 30 days
+# - Test results: 90 days  
+# - Security scans: 365 days
+# - Release packages: Forever
