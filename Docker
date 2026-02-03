@@ -1,0 +1,67 @@
+# EHA-1188 Production Container
+FROM alpine:3.18 as builder
+
+# Install build dependencies
+RUN apk add --no-cache \
+    build-base \
+    python3-dev \
+    py3-pip \
+    openssl-dev \
+    libffi-dev \
+    cargo \
+    rust \
+    git \
+    && pip3 install --upgrade pip
+
+# Create non-root user
+RUN addgroup -S eha1188 && adduser -S eha1188 -G eha1188
+
+WORKDIR /app
+
+# Copy source
+COPY src/ ./src/
+COPY requirements/ ./requirements/
+COPY Cargo.toml Cargo.lock ./
+
+# Build Rust core
+RUN cargo build --release --features "production,hardware_acceleration"
+
+# Build Python package
+RUN pip3 install -r requirements/production.txt
+RUN pip3 install -e ./src/python
+
+# Create final image
+FROM alpine:3.18
+
+# Install runtime dependencies
+RUN apk add --no-cache \
+    python3 \
+    py3-pip \
+    openssl \
+    libgcc \
+    libstdc++ \
+    ca-certificates \
+    tzdata \
+    && rm -rf /var/cache/apk/*
+
+# Copy from builder
+COPY --from=builder /app/target/release/eha1188_core /usr/local/bin/eha1188
+COPY --from=builder /usr/local/lib/python3.9/site-packages/ /usr/local/lib/python3.9/site-packages/
+
+# Create directories
+RUN mkdir -p /etc/eha1188 /var/log/eha1188 /var/lib/eha1188 \
+    && chown -R eha1188:eha1188 /etc/eha1188 /var/log/eha1188 /var/lib/eha1188
+
+# Switch to non-root user
+USER eha1188
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD eha1188 health-check || exit 1
+
+# Expose ports
+EXPOSE 8080
+
+# Entrypoint
+ENTRYPOINT ["eha1188"]
+CMD ["serve", "--host", "0.0.0.0", "--port", "8080"]
