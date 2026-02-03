@@ -1,0 +1,11 @@
+Linux/macOS one-liner
+curl -sSL https://eha1188.example.com/install.sh | bash
+
+Windows PowerShell
+irm https://eha1188.example.com/install.ps1 | iex
+
+Docker
+docker run -it eha1188/core:1.0.0 --help
+
+Kubernetes
+kubectl apply -f https://eha1188.example.com/kubernetes.yaml
