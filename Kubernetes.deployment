@@ -1,0 +1,91 @@
+# k8s/production/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: eha1188-core
+  namespace: eha1188
+  labels:
+    app: eha1188
+    version: v1.0.0
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: eha1188
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: eha1188
+        version: v1.0.0
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+      - name: eha1188
+        image: eha1188containerregistry.azurecr.io/eha1188/asciv-omega:latest
+        imagePullPolicy: Always
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+              - ALL
+          seccompProfile:
+            type: RuntimeDefault
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: EHA1188_ENVIRONMENT
+          value: "Production"
+        - name: EHA1188_KEY_VAULT
+          valueFrom:
+            secretKeyRef:
+              name: eha1188-secrets
+              key: keyVaultName
+        - name: EHA1188_CRYPTO_MODE
+          value: "FIPS-140-2"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+        volumeMounts:
+        - name: secrets
+          mountPath: /etc/eha1188/secrets
+          readOnly: true
+        - name: logs
+          mountPath: /var/log/eha1188
+      volumes:
+      - name: secrets
+        secret:
+          secretName: eha1188-secrets
+      - name: logs
+        emptyDir: {}
+      imagePullSecrets:
+      - name: acr-secret
