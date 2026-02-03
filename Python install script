@@ -1,0 +1,144 @@
+#!/usr/bin/env python3
+# eha1188-python-install.py
+# Python-based installer
+
+import sys
+import os
+import hashlib
+import urllib.request
+import tarfile
+import zipfile
+import platform
+import subprocess
+
+VERSION = "1.0.0"
+BASE_URL = f"https://releases.eha1188.example.com/v{VERSION}"
+
+def detect_platform():
+    system = platform.system().lower()
+    machine = platform.machine().lower()
+    
+    if system == "linux":
+        if machine in ["x86_64", "amd64"]:
+            return "x86_64-linux"
+        elif machine == "aarch64":
+            return "aarch64-linux"
+    elif system == "darwin":
+        if machine == "arm64":
+            return "aarch64-macos"
+        else:
+            return "x86_64-macos"
+    elif system == "windows":
+        return "x86_64-windows"
+    
+    raise ValueError(f"Unsupported platform: {system}/{machine}")
+
+def download_file(url, filename):
+    print(f"Downloading {filename}...")
+    urllib.request.urlretrieve(url, filename)
+    return filename
+
+def verify_checksum(filename, expected_hash):
+    print(f"Verifying {filename}...")
+    sha256 = hashlib.sha256()
+    with open(filename, 'rb') as f:
+        while chunk := f.read(8192):
+            sha256.update(chunk)
+    actual_hash = sha256.hexdigest()
+    
+    if actual_hash == expected_hash:
+        print("✓ Checksum verified")
+        return True
+    else:
+        print(f"✗ Checksum mismatch")
+        print(f"  Expected: {expected_hash[:16]}...")
+        print(f"  Got:      {actual_hash[:16]}...")
+        return False
+
+def install_package(filename, platform):
+    print(f"Installing {filename}...")
+    
+    if platform.endswith("windows"):
+        with zipfile.ZipFile(filename, 'r') as zip_ref:
+            zip_ref.extractall(".")
+        install_dir = os.path.expanduser("~/EHA1188")
+        os.makedirs(install_dir, exist_ok=True)
+        os.rename("eha1188.exe", os.path.join(install_dir, "eha1188.exe"))
+        print(f"Installed to: {install_dir}")
+        print("Add to PATH: setx PATH \"%PATH%;{install_dir}\"")
+    else:
+        with tarfile.open(filename, 'r:gz') as tar:
+            tar.extractall(".")
+        os.chmod("eha1188", 0o755)
+        
+        # Try to install to system path
+        try:
+            subprocess.run(["sudo", "mv", "eha1188", "/usr/local/bin/"], check=True)
+            print("Installed to: /usr/local/bin/eha1188")
+        except:
+            print("Installed to current directory: ./eha1188")
+
+def main():
+    print(f"EHA-1188 ASCIV-Ω v{VERSION} Installer")
+    print("=" * 50)
+    
+    try:
+        plat = detect_platform()
+        print(f"Platform: {plat}")
+        
+        # Platform-specific configurations
+        configs = {
+            "x86_64-linux": {
+                "file": "eha1188-core-x86_64-linux.tar.gz",
+                "hash": "7d9e1a3b5c7d9e1f2a4c6d8e0f1a3b5c7d9e1a3b5c7d9e1f2a4c6d8e0f1a3b5c7"
+            },
+            "aarch64-linux": {
+                "file": "eha1188-core-aarch64-linux.tar.gz",
+                "hash": "8e0f1a3b5c7d9e1f2a4c6d8e0f1a3b5c7d9e1a3b5c7d9e1f2a4c6d8e0f1a3b5c8"
+            },
+            "x86_64-macos": {
+                "file": "eha1188-core-x86_64-macos.tar.gz",
+                "hash": "9e1a3b5c7d9e1f2a4c6d8e0f1a3b5c7d9e1a3b5c7d9e1f2a4c6d8e0f1a3b5c9"
+            },
+            "aarch64-macos": {
+                "file": "eha1188-core-aarch64-macos.tar.gz",
+                "hash": "a0f1a3b5c7d9e1f2a4c6d8e0f1a3b5c7d9e1a3b5c7d9e1f2a4c6d8e0f1a3b5d0"
+            },
+            "x86_64-windows": {
+                "file": "eha1188-core-x86_64-windows.zip",
+                "hash": "b1a3b5c7d9e1f2a4c6d8e0f1a3b5c7d9e1a3b5c7d9e1f2a4c6d8e0f1a3b5d1"
+            }
+        }
+        
+        if plat not in configs:
+            print(f"Unsupported platform: {plat}")
+            sys.exit(1)
+        
+        config = configs[plat]
+        url = f"{BASE_URL}/{config['file']}"
+        
+        # Download
+        filename = download_file(url, config['file'])
+        
+        # Verify
+        if verify_checksum(filename, config['hash']):
+            # Install
+            install_package(filename, plat)
+            
+            # Clean up
+            os.remove(filename)
+            
+            print("\n" + "=" * 50)
+            print("Installation complete!")
+            print("Run 'eha1188 --help' to get started")
+            print("Documentation: https://docs.eha1188.example.com/")
+        else:
+            print("Installation aborted due to verification failure")
+            sys.exit(1)
+            
+    except Exception as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
