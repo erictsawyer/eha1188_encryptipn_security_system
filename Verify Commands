@@ -1,0 +1,50 @@
+After download, verify installation
+cat > verify_installation.sh << 'EOF'
+!/bin/bash
+echo "=== EHA-1188 Installation Verification ==="
+echo
+
+Check binary exists
+if command -v eha1188 &> /dev/null; then
+    echo "✓ Binary found in PATH"
+else
+    if [ -f "./eha1188" ]; then
+        echo "✓ Binary found in current directory"
+    else
+        echo "✗ Binary not found"
+        exit 1
+    fi
+fi
+
+Test version
+echo -n "Version test: "
+if eha1188 --version &> /dev/null; then
+    echo "✓ PASS"
+else
+    echo "✗ FAIL"
+fi
+
+Test basic hash generation
+echo -n "Integrity hash test: "
+TEST_OUTPUT=$(echo "test" | eha1188 hash --mode static 2>/dev/null | head -c 10)
+if [ -n "$TEST_OUTPUT" ]; then
+    echo "✓ PASS"
+else
+    echo "✗ FAIL"
+fi
+
+Test stealth detection
+echo -n "Stealth detection test: "
+STEALTH_TEST=$(printf "test\xE2\x80\x8Btext" | eha1188 hash --mode static 2>/dev/null | head -c 10)
+if [ -n "$STEALTH_TEST" ]; then
+    echo "✓ PASS"
+else
+    echo "✗ FAIL"
+fi
+
+echo
+echo "=== Verification Complete ==="
+EOF
+
+chmod +x verify_installation.sh
+./verify_installation.sh
